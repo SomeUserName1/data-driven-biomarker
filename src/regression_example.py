@@ -10,17 +10,18 @@ from ddbm import FeatureAnalyzer
 X,y = shap.datasets.california(n_points=1000)
 
 # a simple linear model
-model = sklearn.linear_model.LinearRegression()
-model.fit(X, y)
+mmodel = sklearn.linear_model.LinearRegression()
+mmodel.fit(X, y)
 
-df = X['avg_house_value'] = y
+X['avg_house_value'] = y
+df = X
 
 sample_idxs = []
 for i in range(0, 100):
-    n = random.randint(0, len(df.shape[0]))
+    n = random.randint(0, df.shape[0])
     sample_idxs.append(n)
 
-feature_analyzer = FeatureAnalyzer(df, sample_idxs, model, model.predict,
+feature_analyzer = FeatureAnalyzer(df, sample_idxs, mmodel, mmodel.predict,
                                    list(df)[:-1], list(df)[-1])
 feature_analyzer.partial_dependence_plot(list(df)[1], 1)
 feature_analyzer.scatter_plot(list(df)[1])
@@ -30,3 +31,5 @@ feature_analyzer.beeswarm_plot()
 feature_analyzer.heatmap_plot()
 feature_analyzer.decision_plot()
 feature_analyzer.force_plot()
+
+print("done")
