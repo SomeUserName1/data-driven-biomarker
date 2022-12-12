@@ -6,7 +6,9 @@ import seaborn as sns
 import shap
 import xgboost
 import numpy as np
-from sklearn.feature_selection import RFECV, VarianceThreshold, SelectFromModel, SequentialFeatureSelector
+from sklearn.feature_selection import RFECV, VarianceThreshold, \
+                                      SelectFromModel, \
+                                      SequentialFeatureSelector
 from sklearn.preprocessing import label_binarize
 from sklearn.linear_model import LogisticRegressionCV, LassoCV
 
@@ -17,7 +19,7 @@ class ModelType(Enum):
     CLUSTER = 3
 
 class FeatureAnalyzer(ABC):
-    def __init__(self, df, samples, model, predict_fn, predictors, 
+    def __init__(self, df, samples, model, predict_fn, predictors,
                  predicteds, model_type=ModelType.SIMPLE, *clust_params):
         self.model_type = model_type
         self.df = df
@@ -47,52 +49,55 @@ class FeatureAnalyzer(ABC):
 
     def remove_zero_variance_feats(self):
         selector = VarianceThreshold()
-        selector.fit(self.df[self.predicts])
-        self.predicts = selector.get_feature_names_out()
+        selector.fit(self.df[self.predictors])
+        print(selector.get_feature_names_out())
 
-    def get_max_importance(self):
-        return np.max(self.shap_values, axis=2)
+    def get_max_importance(self, model):
+        return np.amax(self.shap_values.values, axis=0)
 
     # Feature importance/coefficient- free methods
     def backwards_select(self):
-        backward = SequentialFeatureSelector(self.model, n_features_to_select="auto", direction="backward", tol=0.05)
-        backward.fit(self.df[self.predictors])
-        self.predictors = backward.get_feature_names_out()
+        backward = SequentialFeatureSelector(self.model,
+                                             n_features_to_select="auto",
+                                             direction="backward", tol=0.01)
+        backward.fit(self.df[self.predictors], self.df[self.predicteds])
+        print(backward.get_feature_names_out())
 
     def forwards_select(self):
-        forward = SequentialFeatureSelector(self.model, n_features_to_select="auto", direction="forward", tol=0.05)
-        forward.fit(self.df[self.predictors])
-        self.predictors = forward.get_feature_names_out()
+        forward = SequentialFeatureSelector(self.model,
+                                            n_features_to_select="auto",
+                                            direction="forward", tol=0.01)
+        forward.fit(self.df[self.predictors], self.df[self.predicteds])
+        print(forward.get_feature_names_out())
 
     # logit for classification, lasso for regression feature elimination
-    def logit_select(self):
-        logit = LogisticRegressionCV(penalty='l1', solver='liblinear', n_jobs=-1)
-        logit.fit(self.df[self.predictors], self.df[self.predicteds])
-        selector = SelectFromModel(logit, prefit=True)
-        selector.fit(self.df[self.predictors])
-        self.predicts = selector.get_feature_names_out()
-
-    def lasso_select(self):
-        lasso = LassoCV(n_jobs=-1)
-        lasso.fit(self.df[self.predictors], self.df[self.predicteds])
-        selector = SelectFromModel(lasso, prefit=True)
-        selector.fit(self.df[self.predictors])
-        self.predicts = selector.get_feature_names_out()
-
-    # Recursive feature eleimination & simple feature importance based select
-    def recursive_feature_elimination(self):
-        rfecv = RFECV(estimator=self.model, n_jobs=-1, importance_getter=self.get_max_importance)
+    def logit_rfe_select(self):
+        logit = LogisticRegressionCV(penalty='l1', solver='liblinear',
+                                     n_jobs=-1, max_iter=10000)
+        rfecv = RFECV(estimator=logit, n_jobs=-1)
         rfecv.fit(self.df[self.predictors], self.df[self.predicteds])
-        self.predicts = rfecv.get_feature_names_out()
+        print(rfecv.get_feature_names_out())
+        print(rfecv.ranking_)
+
+    def lasso_rfe_select(self):
+        lasso = LassoCV(n_jobs=-1)
+        rfecv = RFECV(estimator=lasso, n_jobs=-1)
+        rfecv.fit(self.df[self.predictors], self.df[self.predicteds])
+        print(rfecv.get_feature_names_out())
+        print(rfecv.ranking_)
 
     def shap_select(self):
-        selector = SelectFromModel(self.model, prefit=True, importance_getter=self.get_max_importance)
+        selector = SelectFromModel(self.model, prefit=True, threshold="median",
+                                   max_features=int(0.9 * len(self.predictors)),
+                                   importance_getter=self.get_max_importance)
         selector.fit(self.df[self.predictors])
-        self.predicts = selector.get_feature_names_out()
+        print(selector.get_feature_names_out())
+        print(self.get_max_importance(None)[selector.get_support(indices=True)])
 
     def correlation_matrix_plot(self):
         plt.figure(figsize=(20,20))
         sns.heatmap(self.df.corr(), annot=True, cmap="RdYlGn")
+        plt.show()
 
     def partial_dependence_plot(self, col, index):
     # make a standard partial dependence plot
@@ -122,7 +127,8 @@ class FeatureAnalyzer(ABC):
 
 
     def waterfall_plot(self, index):
-    # the waterfall_plot shows how we get from shap_values.base_values to model.predict(X)[sample_ind]
+    # the waterfall_plot shows how we get from shap_values.base_values to
+    # model.predict(X)[sample_ind]
         shap.plots.waterfall(self.shap_values[index], max_display=14)
 
     def beeswarm_plot(self):
@@ -133,17 +139,24 @@ class FeatureAnalyzer(ABC):
     # Heatmaps show value distribution vs. shap value per feature
         shap.plots.heatmap(self.shap_values)
 
-    def decision_plot(self):
-        if self.model_type not in [ModelType.TREE, ModelType.CLUSTER]:
-            print("Decision plots can only be generated for tree models!")
-            return
+ #   def decision_plot(self):
+ #       if self.model_type not in [ModelType.TREE, ModelType.CLUSTER]:
+ #           print("Decision plots can only be generated for tree models!")
+ #           return
 
-        shap.decision_plot(self.explainer.expected_value, self.shap_values, self.df[self.predictors])
+ #       shap.decision_plot(self.explainer.expected_value, self.shap_values,
+ #                          self.df[self.predictors])
 
-    def force_plot(self):
-        if self.model_type not in [ModelType.TREE, ModelType.CLUSTER]:
-            print("Decision plots can only be generated for tree models!")
-            return
+ #   def force_plot(self):
+ #       if self.model_type not in [ModelType.TREE, ModelType.CLUSTER]:
+ #           print("Decision plots can only be generated for tree models!")
+ #           return
 
-        shap.force_plot(self.explainer.expected_value, self.shap_values, self.df[self.predictors], matplotlib=True) 
+ #       shap.force_plot(self.explainer.expected_value, self.shap_values,
+ #                       self.df[self.predictors], matplotlib=True)
 
+# Maybe double ML
+# make sure that finding is reliable, train and test
+# evaluation routines in terms of accuracy/AUC.
+# select features based on training set, train classifier on these features only.
+# validate on test set both original with all and with less and see if AUC matches
