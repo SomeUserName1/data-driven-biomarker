@@ -28,24 +28,19 @@ class FeatureAnalyzer(ABC):
         self.predict_fn = predict_fn
         self.predictors = predictors
         self.predicteds = predicteds
+        self.X = df[predictors].iloc[samples]
 
-        if model_type != ModelType.CLUSTER:
-            # compute the SHAP values for the model
-            self.explainer = shap.Explainer(predict_fn,
-                                            self.df[predictors].iloc[samples])
-            self.shap_values = self.explainer(self.df[predictors])
-        else:
-            # get detected cluster labels
-            y = model.fit(self.df[predictors], clust_params).labels_
-            y = label_binarize(y, classes=range(len(y)))
+        if model_type == ModelType.CLUSTER:
             # fit a classifier
-            clf = xgboost.XGBClassifier()
-            clf.fit(self.df[predictors], y)
-            # compute the shap values per class and feature
-            self.explainer = shap.TreeExplainer(clf)
-            self.shap_values = self.explainer(self.df[predictors])
-        # maybe add sth to deal with dimensionality reduction
+            clf = xgboost.XGBClassifier(use_label_encoder=False)
+            clf.fit(self.df[predictors], self.df[predicteds])
+            self.model = clf
+            self.predict_fn = clf.predict
+            self.clust = model
 
+        # compute the SHAP values for the model
+        self.explainer = shap.Explainer(self.predict_fn, self.X)
+        self.shap_values = self.explainer(self.X)
 
     def remove_zero_variance_feats(self):
         selector = VarianceThreshold()
@@ -99,16 +94,20 @@ class FeatureAnalyzer(ABC):
         sns.heatmap(self.df.corr(), annot=True, cmap="RdYlGn")
         plt.show()
 
-    def partial_dependence_plot(self, col, index):
+#    def shap_interaction_values(self):
+#        if self.model_type in [ModelType.TREE, ModelType.CLUSTER]:
+#            print("Interaction values:")
+#            print(self.explainer.shap_interaction_values(self.X))
+
+    def partial_dependence_plot(self, col):
     # make a standard partial dependence plot
-        shap.partial_dependence_plot(
-            col, self.predict_fn, self.df[self.predictors].iloc[self.samples],
+        shap.plots.partial_dependence(
+            col, self.predict_fn, self.X,
             model_expected_value=True, feature_expected_value=True,
-            ice=False,
-            shap_values=self.shap_values[index:index+1,:]
+            ice=False
         )
 
-    def scatter_plot(self, col):
+    def scatter_plot(self, col, interaction=False):
     # Shap value scatter plot
         shap.plots.scatter(self.shap_values[:, col], color=self.shap_values)
 
@@ -116,20 +115,15 @@ class FeatureAnalyzer(ABC):
         # Correlated features shown by dendrogram
         clustering = shap.utils.hclust(self.df[self.predictors],
                                        self.df[self.predicteds])
-
         # Mean shap value bar plot
         shap.plots.bar(self.shap_values, clustering=clustering,
-                       clustering_cutoff=clustering_cutoff)
-        shap.plots.bar(self.shap_values.abs.max(0), clustering=clustering,
-                       clustering_cutoff=clustering_cutoff)
-        shap.plots.bar(self.shap_values.abs.min(0), clustering=clustering,
                        clustering_cutoff=clustering_cutoff)
 
 
     def waterfall_plot(self, index):
     # the waterfall_plot shows how we get from shap_values.base_values to
     # model.predict(X)[sample_ind]
-        shap.plots.waterfall(self.shap_values[index], max_display=14)
+        shap.plots.waterfall(self.shap_values[index])
 
     def beeswarm_plot(self):
     # Beeswarm plot summarizes entire distribution of SHAP values f.a. features
@@ -139,24 +133,16 @@ class FeatureAnalyzer(ABC):
     # Heatmaps show value distribution vs. shap value per feature
         shap.plots.heatmap(self.shap_values)
 
- #   def decision_plot(self):
- #       if self.model_type not in [ModelType.TREE, ModelType.CLUSTER]:
- #           print("Decision plots can only be generated for tree models!")
- #           return
+    def decision_plot(self):
+        shap.decision_plot(self.shap_values.base_values[0], self.shap_values.values)
 
- #       shap.decision_plot(self.explainer.expected_value, self.shap_values,
- #                          self.df[self.predictors])
-
- #   def force_plot(self):
- #       if self.model_type not in [ModelType.TREE, ModelType.CLUSTER]:
- #           print("Decision plots can only be generated for tree models!")
- #           return
-
- #       shap.force_plot(self.explainer.expected_value, self.shap_values,
- #                       self.df[self.predictors], matplotlib=True)
+    def force_plot(self, idx):
+        expected = self.shap_values.base_values
+        shap.force_plot(expected[idx], self.shap_values.values[idx]).matplotlib((20, 20), True, 0)
 
 # Maybe double ML
 # make sure that finding is reliable, train and test
 # evaluation routines in terms of accuracy/AUC.
 # select features based on training set, train classifier on these features only.
+
 # validate on test set both original with all and with less and see if AUC matches

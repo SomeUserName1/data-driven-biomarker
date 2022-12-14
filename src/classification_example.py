@@ -14,13 +14,11 @@ X, y = iris.data, iris.target
 
 cols = ['feature_' + str(i) for i in range(X.shape[1])]
 df = pd.DataFrame(X, columns=cols)
-df['target'] = y
+df['species'] = y
 
 # a simple linear model
 mmodel = sklearn.tree.DecisionTreeClassifier()
 mmodel = mmodel.fit(df.iloc[:, :-1], df.iloc[:, -1])
-
-
 
 sample_idxs = []
 for i in range(0, 100):
@@ -34,12 +32,14 @@ feature_analyzer = FeatureAnalyzer(df, sample_idxs, mmodel, mmodel.predict,
                                    list(df)[:-1], list(df)[-1], ModelType.TREE)
 
 print("=== SHAP Plots ===")
-feature_analyzer.partial_dependence_plot(list(df)[1], 1)
-feature_analyzer.scatter_plot(list(df)[1])
+feature_analyzer.partial_dependence_plot(1)
+feature_analyzer.scatter_plot(1)
 feature_analyzer.bar_plot()
 feature_analyzer.waterfall_plot(1)
 feature_analyzer.beeswarm_plot()
 feature_analyzer.heatmap_plot()
+feature_analyzer.force_plot(1)
+feature_analyzer.decision_plot()
 
 print("=== Feature Cov matrix ===")
 feature_analyzer.correlation_matrix_plot()
@@ -56,7 +56,7 @@ feature_analyzer.forwards_select()
 print("=== Backwards Selection ===")
 feature_analyzer.backwards_select()
 
-print("=== Logit-based Recursive Feature Elimintation===")
-feature_analyzer.logit_rfe_select()
+print("=== Lasso-based Recursive Feature Elimintation===")
+feature_analyzer.lasso_rfe_select()
 
 print("done")
