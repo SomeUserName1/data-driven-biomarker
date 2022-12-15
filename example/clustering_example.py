@@ -8,6 +8,8 @@ import sklearn
 from sklearn.datasets import make_blobs
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import DBSCAN
+import sys
+sys.path.append(r"/home/someusername/sync/workspace/nb_tue/3/2_gharabaghi/data-driven-biomarker/src/")
 
 from ddbm import FeatureAnalyzer, ModelType
 

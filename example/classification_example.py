@@ -6,6 +6,8 @@ import sklearn
 from sklearn.datasets import load_iris
 from sklearn.tree import DecisionTreeClassifier
 
+import sys
+sys.path.append(r"/home/someusername/sync/workspace/nb_tue/3/2_gharabaghi/data-driven-biomarker/src/")
 from ddbm import FeatureAnalyzer, ModelType
 
 # a classic housing price dataset

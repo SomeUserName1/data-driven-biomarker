@@ -1,0 +1,59 @@
+import random
+
+import pandas as pd
+import shap
+import sklearn
+
+import sys
+sys.path.append(r"/home/someusername/sync/workspace/nb_tue/3/2_gharabaghi/data-driven-biomarker/src/")
+from ddbm import FeatureAnalyzer
+
+# a classic housing price dataset
+X,y = shap.datasets.california(n_points=1000)
+
+# a simple linear model
+mmodel = sklearn.linear_model.LinearRegression()
+mmodel.fit(X, y)
+
+X['avg_house_value'] = y
+df = X
+
+sample_idxs = []
+for i in range(0, 100):
+    n = random.randint(0, df.shape[0] - 1)
+    while(n in sample_idxs):
+        n = random.randint(0, df.shape[0] - 1)
+
+    sample_idxs.append(n)
+
+feature_analyzer = FeatureAnalyzer(df, sample_idxs, mmodel, mmodel.predict,
+                                   list(df)[:-1], list(df)[-1])
+print("=== SHAP Plots ===")
+feature_analyzer.partial_dependence_plot(1)
+feature_analyzer.scatter_plot(1)
+feature_analyzer.bar_plot()
+feature_analyzer.waterfall_plot(1)
+feature_analyzer.beeswarm_plot()
+feature_analyzer.heatmap_plot()
+feature_analyzer.force_plot(1)
+feature_analyzer.decision_plot()
+
+print("=== Feature Cov matrix ===")
+feature_analyzer.correlation_matrix_plot()
+
+print("=== Zero Variance Features Removed ===")
+feature_analyzer.remove_zero_variance_feats()
+
+print("=== Shap Selection ===")
+feature_analyzer.shap_select()
+
+print("=== Forward Selection ===")
+feature_analyzer.forwards_select()
+
+print("=== Backwards Selection ===")
+feature_analyzer.backwards_select()
+
+print("=== Lasso-based Recursive Feature Elimintation===")
+feature_analyzer.lasso_rfe_select()
+
+print("done")
