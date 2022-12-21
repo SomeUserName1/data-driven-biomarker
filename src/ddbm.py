@@ -50,6 +50,9 @@ class FeatureAnalyzer(ABC):
     def get_max_importance(self, model):
         return np.amax(self.shap_values.values, axis=0)
 
+    def get_mean_importance(self, model):
+        return np.mean(self.shap_values.values, axis=0)
+
     # Feature importance/coefficient- free methods
     def backwards_select(self):
         backward = SequentialFeatureSelector(self.model,
@@ -67,8 +70,7 @@ class FeatureAnalyzer(ABC):
 
     # logit for classification, lasso for regression feature elimination
     def logit_rfe_select(self):
-        logit = LogisticRegressionCV(penalty='l1', solver='liblinear',
-                                     n_jobs=-1, max_iter=10000)
+        logit = LogisticRegressionCV(penalty='l1', solver='saga', n_jobs=-1)
         rfecv = RFECV(estimator=logit, n_jobs=-1)
         rfecv.fit(self.df[self.predictors], self.df[self.predicteds])
         print(rfecv.get_feature_names_out())
@@ -81,13 +83,14 @@ class FeatureAnalyzer(ABC):
         print(rfecv.get_feature_names_out())
         print(rfecv.ranking_)
 
-    def shap_select(self):
+    def shap_select(self, shap_max=True):
+        fn = self.get_max_importance if shap_max else self.get_mean_importance
         selector = SelectFromModel(self.model, prefit=True, threshold="median",
                                    max_features=int(0.9 * len(self.predictors)),
-                                   importance_getter=self.get_max_importance)
+                                   importance_getter=fn)
         selector.fit(self.df[self.predictors])
         print(selector.get_feature_names_out())
-        print(self.get_max_importance(None)[selector.get_support(indices=True)])
+        print(fn(None)[selector.get_support(indices=True)])
 
     def correlation_matrix_plot(self):
         plt.figure(figsize=(20,20))

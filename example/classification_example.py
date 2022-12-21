@@ -59,6 +59,6 @@ print("=== Backwards Selection ===")
 feature_analyzer.backwards_select()
 
 print("=== Lasso-based Recursive Feature Elimintation===")
-feature_analyzer.lasso_rfe_select()
+feature_analyzer.logit_rfe_select()
 
 print("done")
