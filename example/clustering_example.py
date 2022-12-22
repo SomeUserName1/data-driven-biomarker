@@ -28,7 +28,7 @@ mmodel.fit(df)
 
 df['labels'] = mmodel.labels_
 n_clusters = len(set(df['labels']))
-df['labels'] = df['labels'].mask(df['labels'] == -1, n_clusters - 1)
+df['labels'] = df['labels'].mask(df['labels'] == -1, n_clusters)
 
 sample_idxs = []
 for i in range(0, 100):
