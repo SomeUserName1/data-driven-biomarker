@@ -20,7 +20,7 @@ class ModelType(Enum):
 
 class FeatureAnalyzer(ABC):
     def __init__(self, df, samples, model, predict_fn, predictors,
-                 predicteds, model_type=ModelType.SIMPLE, *clust_params):
+                 predicteds, model_type=ModelType.SIMPLE, max_display=None, *clust_params):
         self.model_type = model_type
         self.df = df
         self.samples = samples
@@ -29,6 +29,7 @@ class FeatureAnalyzer(ABC):
         self.predictors = predictors
         self.predicteds = predicteds
         self.X = df[predictors].iloc[samples]
+        self.max_display = int(np.ceil(0.5 * len(self.predictors))) if max_display is None else max_display
 
         if model_type == ModelType.CLUSTER:
             # fit a classifier
@@ -119,7 +120,7 @@ class FeatureAnalyzer(ABC):
         clustering = shap.utils.hclust(self.df[self.predictors],
                                        self.df[self.predicteds])
         # Mean shap value bar plot
-        shap.plots.bar(self.shap_values, clustering=clustering,
+        shap.plots.bar(self.shap_values, max_display=self.max_display, clustering=clustering,
                        clustering_cutoff=clustering_cutoff)
 
 
@@ -130,14 +131,14 @@ class FeatureAnalyzer(ABC):
 
     def beeswarm_plot(self):
     # Beeswarm plot summarizes entire distribution of SHAP values f.a. features
-        shap.plots.beeswarm(self.shap_values)
+        shap.plots.beeswarm(self.shap_values, max_display=self.max_display)
 
     def heatmap_plot(self):
     # Heatmaps show value distribution vs. shap value per feature
-        shap.plots.heatmap(self.shap_values)
+        shap.plots.heatmap(self.shap_values, max_display=self.max_display)
 
     def decision_plot(self):
-        shap.decision_plot(self.shap_values.base_values[0], self.shap_values.values)
+        shap.decision_plot(self.shap_values.base_values[0], self.shap_values.values, max_display=self.max_display)
 
     def force_plot(self, idx):
         expected = self.shap_values.base_values
