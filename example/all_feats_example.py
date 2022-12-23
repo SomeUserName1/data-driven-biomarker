@@ -1,6 +1,7 @@
 import random
 import math
 from pprint import pprint
+from collections import Counter
 import pickle
 import sys
 import multiprocessing
@@ -17,8 +18,8 @@ import shap
 import sklearn
 import xgboost
 from ddbm import FeatureAnalyzer, ModelType
-from sklearn.cluster import OPTICS
-import hdbscan
+from sklearn.cluster import OPTICS, KMeans, DBSCAN, SpectralClustering, MeanShift, AffinityPropagation, BisectingKMeans
+from hdbscan import HDBSCAN
 #from Group import IntraOpNeuroDataset
 
 pkl_path = "/home/someusername/sync/workspace/nb_tue/3/2_gharabaghi/group_1669237550.pkl"
@@ -26,80 +27,123 @@ pkl_path = "/home/someusername/sync/workspace/nb_tue/3/2_gharabaghi/group_166923
 with open(pkl_path, "rb") as group_file:
     intraop_data = pickle.load(group_file)
 
-# each row one contact
-df_lfp = intraop_data.lfp_features_df[['aligned depth', 'lfp psd']]
-# each row one eeg
-# pandas can do it: pd.explode
+df = intraop_data.lfp_features_df
 
-df = df_lfp['lfp psd'].apply(lambda x: pd.Series(np.mean(x, axis=0)))
+# Use green contacts only
+freqs = df['lfp flat psd freqs'].iloc[0]
+df = df.loc[df['contact'] == 0][['aligned depth', 'lfp flat psd']]
+
+# flatten the psd from a list in one column to one column per frequency
+n_df = df['lfp flat psd'].apply(pd.Series)
+n_df.columns = map(str, map(int, freqs))
 
 group_sz = 3
 binned_df = pd.DataFrame()
-col_segments = range(math.ceil(df.shape[1] / float(group_sz)))
+col_segments = range(math.ceil(n_df.shape[1] / float(group_sz)))
 for col in col_segments:
-    binned_df[str(col * group_sz) + "_" + str((col + 1) * group_sz - 1) + '_Hz'] = df.iloc[:, group_sz * col : group_sz * (col + 1)].mean(axis=1)
+    binned_df[str(col * group_sz + freqs[0]) + "_" + str((col + 1) * group_sz + freqs[0] - 1) + '_Hz'] = n_df.iloc[:, group_sz * col : group_sz * (col + 1)].mean(axis=1)
 
+binned_df['depth'] = df['aligned depth']
+binned_df['in_stn'] = [1 if d <= 1.75 and d >= -4 else 0 for d in binned_df['depth']]
+binned_df['cluster'] = np.zeros(df.shape[0])
+del n_df
 del df
+del intraop_data
 df = binned_df
+df.reset_index(inplace=True, drop=True)
 
-############### CLUSTERING of PSDs per depth #######################################################
-df['depth'] = df_lfp['aligned depth']
-
-mmodel = hdbscan.HDBSCAN(min_samples=3, min_cluster_size=100, cluster_selection_method='eom')
-mmodel.fit(df.iloc[:, :-1])
-
-df['cluster'] = mmodel.labels_
-n_clus = mmodel.labels_.max() + 1
-df['cluster'] = df['cluster'].mask(df['cluster'] == -1, n_clus)
-
-color_palette = sns.color_palette('Paired', n_clus +1 )
-cluster_colors = [color_palette[x] if x >= 0
-                  else (0.5, 0.5, 0.5)
-                  for x in mmodel.labels_]
-cluster_member_colors = [sns.desaturate(x, p) for x, p in
-                         zip(cluster_colors, mmodel.probabilities_)]
-data = UMAP(n_components=3).fit_transform(df.iloc[:, :-2])
-ax = plt.figure().add_subplot(projection='3d')
-ax.scatter(xs=data.T[0], ys=data.T[1], zs=data.T[2], linewidth=0, c=cluster_member_colors, alpha=0.25)
-plt.show()
-
-mmodel.condensed_tree_.plot(select_clusters=True,
-                               selection_palette=color_palette)
-plt.show()
-
-cum_depth = np.zeros(n_clus)
-num_points_cluster = np.zeros(n_clus)
-prob_in_stn_cluster = []
-for i, label in enumerate(mmodel.labels_):
-    depth = df['depth'].iloc[i]
-
-    if depth <= 1.75 and depth >= -4:
-        prob_in_stn_cluster.append(label)
-
-    cum_depth[label] += depth
-    num_points_cluster[label] += 1
-
-avg_depth = cum_depth / num_points_cluster
-print("Cluster Sizes: " + str(num_points_cluster))
-print("Average depth per cluster: " + str(avg_depth))
-print("Cluster ids of points with -4 <= x <= 1.75: " + str(prob_in_stn_cluster))
-
-sample_idxs = []
-for idx, d in enumerate(df_lfp['aligned depth']):
-    if d <= 1.75 and d >= -4 :
-        sample_idxs.append(idx)
-
-for i in range(0, 668):
+sample_idxs = df.index[df['in_stn'] == 1].to_list()
+len_trues = len(sample_idxs)
+for i in range(0, len_trues):
     n = random.randint(0, df.shape[0] - 1)
     while n in sample_idxs:
         n = random.randint(0, df.shape[0] - 1)
 
     sample_idxs.append(n)
 
-sys.exit()
+#print(df.describe())
+#print(df.head(n=10))
+#print(df.groupby(['in_stn']).count())
+data = UMAP(n_components=3).fit_transform(df.iloc[:, :-3])
+in_stn_colors = [ (1, 0, 0) if d == 1 else (0.5, 0.5, 0.5) for d in df['in_stn']]
 
-feature_analyzer = FeatureAnalyzer(df, sample_idxs, mmodel, mmodel.fit_predict,
-                                   list(df)[:-2], list(df)[-1], ModelType.CLUSTER)
+ax = plt.figure().add_subplot(projection='3d')
+ax.scatter(xs=data.T[0], ys=data.T[1], zs=data.T[2], linewidth=0, c=in_stn_colors, alpha=0.5)
+plt.show()
+plt.clf()
+
+############### CLUSTERING of PSDs per depth #######################################################
+#for algo in [HDBSCAN, OPTICS, DBSCAN, MeanShift, AffinityPropagation, KMeans, BisectingKMeans, SpectralClustering]:
+## mmodel = hdbscan.HDBSCAN(min_samples=1, min_cluster_size=3, cluster_selection_epsilon=1.4, cluster_selection_method='leaf')
+#    algo_str = str(str(algo).split('.')[-1]).split("'")[0]
+#    print('============ ' + algo_str + ' ==============')
+#    if algo in [HDBSCAN, DBSCAN, OPTICS, MeanShift, AffinityPropagation]:
+#        mmodel = algo()
+#    else:
+#        mmodel = algo(n_clusters=2)
+#
+#    mmodel.fit(df.iloc[:, :-3])
+#
+#    df['cluster'] = mmodel.labels_
+#    n_clus = mmodel.labels_.max() + 1
+#    df['cluster'] = df['cluster'].mask(df['cluster'] == -1, n_clus)
+#
+#    color_palette = sns.color_palette('Paired', n_clus)
+#    cluster_colors = [color_palette[x] if x >= 0
+#                      else (0.5, 0.5, 0.5)
+#                      for x in mmodel.labels_]
+#    ax = plt.figure().add_subplot(projection='3d')
+#    ax.scatter(xs=data.T[0], ys=data.T[1], zs=data.T[2], linewidth=0, c=cluster_colors, alpha=0.5) 
+#    plt.savefig('clust_scatter_' + algo_str + '.png')
+#    plt.clf()
+#
+#    cum_depth = np.zeros(n_clus + 1)
+#    num_points_cluster = np.zeros(n_clus + 1)
+#    prob_in_stn_cluster = []
+#    for i in range(df.shape[0]):
+#        label = df['cluster'].iloc[i]
+#
+#        if df['in_stn'].iloc[i]:
+#            prob_in_stn_cluster.append(label)
+#
+#        cum_depth[label] += df['depth'].iloc[i]
+#        num_points_cluster[label] += 1
+#
+#    avg_depth = cum_depth / num_points_cluster
+#    counts = Counter(prob_in_stn_cluster)
+#
+#    clst = pd.DataFrame()
+#    clst['size'] = num_points_cluster
+#    clst['avg_depth'] = avg_depth
+#    clst['#in_stn'] = [counts[i] for i in range(0, n_clus + 1)]
+#    clst['%in_stn'] = [counts[i] / num_points_cluster[i] for i in range(0, n_clus + 1)]
+#    in_stn_tot = df['in_stn'].value_counts()[1]
+#    clst['%stn_rows_in_clust'] = [counts[i]/in_stn_tot for i in range(0, n_clus + 1)]
+#    clst.to_csv('clustering_comparison_' + algo_str + '.csv')
+#
+#    feature_analyzer = FeatureAnalyzer(df, sample_idxs, mmodel, mmodel.fit_predict,
+#                                       list(df)[:-3], list(df)[-1], ModelType.CLUSTER)
+#
+#    feature_analyzer.bar_plot()
+#    feature_analyzer.beeswarm_plot()
+#    feature_analyzer.heatmap_plot()
+#    feature_analyzer.decision_plot()
+#
+#    print("=== Shap Selection ===")
+#    feature_analyzer.shap_select()
+#
+#feature_analyzer.correlation_matrix_plot()
+
+
+############### CLASSIFICATION ###############################
+mmodel = sklearn.tree.DecisionTreeClassifier(max_depth=5)
+mmodel.fit(df.iloc[:, :-3], df.iloc[:, -2])
+sklearn.tree.plot_tree(mmodel)
+plt.show()
+print(mmodel.feature_importances_)
+
+feature_analyzer = FeatureAnalyzer(df, sample_idxs, mmodel, mmodel.predict,
+                                   list(df)[:-3], list(df)[-2], ModelType.TREE)
 
 print("=== SHAP Plots ===")
 feature_analyzer.bar_plot()
@@ -113,103 +157,26 @@ feature_analyzer.correlation_matrix_plot()
 print("=== Shap Selection ===")
 feature_analyzer.shap_select()
 
-# mmodel = xgboost.XGBRegressor(n_jobs=multiprocessing.cpu_count() // 2, max_depth=5)
-# mmodel.fit(df.iloc[:, :-1], df.iloc[:, -1])
-# xgboost.plot_importance(mmodel)
-# xgboost.plot_tree(mmodel)
-# 
-# sample_idxs = []
-# for idx, d in enumerate(df_lfp['aligned depth']):
-#     if d <= 1.75 and d >= -4 :
-#         sample_idxs.append(idx)
-# 
-# for i in range(0, 333):
-#     n = random.randint(0, df.shape[0] - 1)
-#     while n in sample_idxs:
-#         n = random.randint(0, df.shape[0] - 1)
-# 
-#     sample_idxs.append(n)
-# 
-# feature_analyzer = FeatureAnalyzer(df, sample_idxs, mmodel, mmodel.predict,
-#                                    list(df)[:-1], list(df)[-1], ModelType.TREE)
-# 
-# print("=== SHAP Plots ===")
-# feature_analyzer.bar_plot()
-# feature_analyzer.beeswarm_plot()
-# feature_analyzer.heatmap_plot()
-# feature_analyzer.decision_plot()
-# 
-# print("=== Feature Cov matrix ===")
-# feature_analyzer.correlation_matrix_plot()
-# 
-# print("=== Shap Selection ===")
-# feature_analyzer.shap_select()
+########################### REGRESSION ######################################
+mmodel = xgboost.XGBRegressor(n_jobs=multiprocessing.cpu_count() // 2, max_depth=5)
+mmodel.fit(df.iloc[:, :-3], df.iloc[:, -3])
+xgboost.plot_importance(mmodel)
+xgboost.plot_tree(mmodel)
+ 
+feature_analyzer = FeatureAnalyzer(df, sample_idxs, mmodel, mmodel.predict,
+                                   list(df)[:-3], list(df)[-3], ModelType.TREE)
 
-############### CLASSIFICATION based on eyeballed limits [-4, 1.75] ################################
-# df['in_stn'] = [1 if d <= 1.75 and d >= -4 else -1 for d in df_lfp['aligned depth']]
+print("=== SHAP Plots ===")
+feature_analyzer.bar_plot()
+feature_analyzer.beeswarm_plot()
+feature_analyzer.heatmap_plot()
+feature_analyzer.decision_plot()
 
-#mmodel = sklearn.tree.DecisionTreeClassifier(max_depth=5)
-#mmodel.fit(df.iloc[:, :-1], df.iloc[:, -1])
-#sklearn.tree.plot_tree(mmodel)
-#plt.show()
-#print(mmodel.feature_importances_)
-#
-#sample_idxs = df[df['in_stn'] == 1].index.to_list()
-#for i in range(0, 333):
-#    n = random.randint(0, df.shape[0] - 1)
-#    while n in sample_idxs:
-#        n = random.randint(0, df.shape[0] - 1)
-#
-#    sample_idxs.append(n)
-#
-#feature_analyzer = FeatureAnalyzer(df, sample_idxs, mmodel, mmodel.predict,
-#                                   list(df)[:-1], list(df)[-1], ModelType.TREE)
-#
-#print("=== SHAP Plots ===")
-#feature_analyzer.bar_plot()
-#feature_analyzer.beeswarm_plot()
-#feature_analyzer.heatmap_plot()
-#feature_analyzer.decision_plot()
-#
-#print("=== Feature Cov matrix ===")
-#feature_analyzer.correlation_matrix_plot()
-#
-#print("=== Shap Selection ===")
-#feature_analyzer.shap_select()
+print("=== Feature Cov matrix ===")
+feature_analyzer.correlation_matrix_plot()
+
+print("=== Shap Selection ===")
+feature_analyzer.shap_select()
 
 
-########################### REGRESSION of aligned depth ######################################
-# df['depth'] = df_lfp['aligned depth']
-# 
-# mmodel = xgboost.XGBRegressor(n_jobs=multiprocessing.cpu_count() // 2, max_depth=5)
-# mmodel.fit(df.iloc[:, :-1], df.iloc[:, -1])
-# xgboost.plot_importance(mmodel)
-# xgboost.plot_tree(mmodel)
-# 
-# sample_idxs = []
-# for idx, d in enumerate(df_lfp['aligned depth']):
-#     if d <= 1.75 and d >= -4 :
-#         sample_idxs.append(idx)
-# 
-# for i in range(0, 333):
-#     n = random.randint(0, df.shape[0] - 1)
-#     while n in sample_idxs:
-#         n = random.randint(0, df.shape[0] - 1)
-# 
-#     sample_idxs.append(n)
-# 
-# feature_analyzer = FeatureAnalyzer(df, sample_idxs, mmodel, mmodel.predict,
-#                                    list(df)[:-1], list(df)[-1], ModelType.TREE)
-# 
-# print("=== SHAP Plots ===")
-# feature_analyzer.bar_plot()
-# feature_analyzer.beeswarm_plot()
-# feature_analyzer.heatmap_plot()
-# feature_analyzer.decision_plot()
-# 
-# print("=== Feature Cov matrix ===")
-# feature_analyzer.correlation_matrix_plot()
-# 
-# print("=== Shap Selection ===")
-# feature_analyzer.shap_select()
-# 
+#### recluster only in stn and analyze features to detect sub regions of the stn like motor & cognitive

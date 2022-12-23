@@ -84,7 +84,7 @@ class FeatureAnalyzer(ABC):
         print(rfecv.get_feature_names_out())
         print(rfecv.ranking_)
 
-    def shap_select(self, shap_max=True):
+    def shap_select(self, shap_max=False):
         fn = self.get_max_importance if shap_max else self.get_mean_importance
         selector = SelectFromModel(self.model, prefit=True, threshold="median",
                                    max_features=int(0.9 * len(self.predictors)),
@@ -93,56 +93,123 @@ class FeatureAnalyzer(ABC):
         print(selector.get_feature_names_out())
         print(fn(None)[selector.get_support(indices=True)])
 
-    def correlation_matrix_plot(self):
+    def correlation_matrix_plot(self, save=False, fig_path=None):
         plt.figure(figsize=(20,20))
         sns.heatmap(self.df.corr(), annot=True, cmap="RdYlGn")
-        plt.show()
+
+        if save:
+            if fig_path is None:
+                fig_path = "correlation_matrix.png"
+            plt.savefig(fig_path, dpi=150, bbox_inches='tight')
+        else:
+            plt.show()
 
 #    def shap_interaction_values(self):
 #        if self.model_type in [ModelType.TREE, ModelType.CLUSTER]:
 #            print("Interaction values:")
 #            print(self.explainer.shap_interaction_values(self.X))
 
-    def partial_dependence_plot(self, col):
+    def partial_dependence_plot(self, col, save=False, fig_path=None):
     # make a standard partial dependence plot
-        shap.plots.partial_dependence(
-            col, self.predict_fn, self.X,
-            model_expected_value=True, feature_expected_value=True,
-            ice=False
-        )
+        if not save:
+            shap.plots.partial_dependence(
+                col, self.predict_fn, self.X,
+                model_expected_value=True, feature_expected_value=True,
+                ice=False
+            )
+        else:
+            shap.plots.partial_dependence(
+                col, self.predict_fn, self.X,
+                model_expected_value=True, feature_expected_value=True,
+                ice=False, matplotlib=True, show=False
+            )
+            if fig_path is None:
+                fig_path = "shap_part_dependence.png"
+            plt.savefig(fig_path, dpi=150, bbox_inches='tight')
 
-    def scatter_plot(self, col, interaction=False):
+
+    def scatter_plot(self, col, interaction=False, save=False, fig_path=None):
     # Shap value scatter plot
-        shap.plots.scatter(self.shap_values[:, col], color=self.shap_values)
+        if not save:
+            shap.plots.scatter(self.shap_values[:, col], color=self.shap_values)
+        else:
+            shap.plots.scatter(self.shap_values[:, col], color=self.shap_values, matplotlib=True, show=False)
+            if fig_path is None:
+                fig_path = "shap_scatter.png"
+            plt.savefig(fig_path, dpi=150, bbox_inches='tight')
 
-    def bar_plot(self, feature_correl=True, clustering_cutoff=0.8):
+
+    def bar_plot(self, feature_correl=True, clustering_cutoff=0.8, save=False, fig_path=None):
         # Correlated features shown by dendrogram
         clustering = shap.utils.hclust(self.df[self.predictors],
                                        self.df[self.predicteds])
         # Mean shap value bar plot
-        shap.plots.bar(self.shap_values, max_display=self.max_display, clustering=clustering,
+        if not save:
+            shap.plots.bar(self.shap_values, max_display=self.max_display, clustering=clustering,
                        clustering_cutoff=clustering_cutoff)
+        else:
+            shap.plots.bar(self.shap_values, max_display=self.max_display, clustering=clustering,
+                       clustering_cutoff=clustering_cutoff, matplotlib=True, show=False)
+            if fig_path is None:
+                fig_path = "shap_bar.png"
+            plt.savefig(fig_path, dpi=150, bbox_inches='tight')
 
+        
 
-    def waterfall_plot(self, index):
+    def waterfall_plot(self, index, save=False, fig_path=None):
     # the waterfall_plot shows how we get from shap_values.base_values to
     # model.predict(X)[sample_ind]
-        shap.plots.waterfall(self.shap_values[index])
+        if not save:
+            shap.plots.waterfall(self.shap_values[index])
+        else:
+            shap.plots.waterfall(self.shap_values[index], matplotlib=True, show=False)
+            if fig_path is None:
+                fig_path = "shap_waterfall.png"
+            plt.savefig(fig_path, dpi=150, bbox_inches='tight')
 
-    def beeswarm_plot(self):
+
+    def beeswarm_plot(self, save=False, fig_path=None):
     # Beeswarm plot summarizes entire distribution of SHAP values f.a. features
-        shap.plots.beeswarm(self.shap_values, max_display=self.max_display)
+        if not save:
+            shap.plots.beeswarm(self.shap_values, max_display=self.max_display)
+        else:
+            shap.plots.beeswarm(self.shap_values, max_display=self.max_display, matplotlib=True, show=False)
+            if fig_path is None:
+                fig_path = "shap_beeswarm.png"
+            plt.savefig(fig_path, dpi=150, bbox_inches='tight')
 
-    def heatmap_plot(self):
+        
+    def heatmap_plot(self, save=False, fig_path=None):
     # Heatmaps show value distribution vs. shap value per feature
-        shap.plots.heatmap(self.shap_values, max_display=self.max_display)
+        if not save:
+            shap.plots.heatmap(self.shap_values, max_display=self.max_display)
+        else:
+            shap.plots.heatmap(self.shap_values, max_display=self.max_display, matplotlib=True, show=False)
+            if fig_path is None:
+                fig_path = "shap_heatmap.png"
+            plt.savefig(fig_path, dpi=150, bbox_inches='tight')
 
-    def decision_plot(self):
-        shap.decision_plot(self.shap_values.base_values[0], self.shap_values.values, max_display=self.max_display)
 
-    def force_plot(self, idx):
+    def decision_plot(self, save=False, fig_path=None):
+        if not save:
+            shap.decision_plot(self.shap_values.base_values[0], self.shap_values.values)
+        else:
+            shap.decision_plot(self.shap_values.base_values[0], self.shap_values.values, matplotlib=True, show=False)
+            if fig_path is None:
+                fig_path = "shap_decision.png"
+            plt.savefig(fig_path, dpi=150, bbox_inches='tight')
+
+
+    def force_plot(self, idx, save=False, fig_path=None):
         expected = self.shap_values.base_values
-        shap.force_plot(expected[idx], self.shap_values.values[idx]).matplotlib((20, 20), True, 0)
+        if not save:
+            shap.force_plot(expected[idx], self.shap_values.values[idx]).matplotlib((20, 20), True, 0)
+        else:
+            shap.force_plot(expected[idx], self.shap_values.values[idx]).matplotlib((20, 20), False, 0)
+            if fig_path is None:
+                fig_path = "shap_force.png"
+            plt.savefig(fig_path, dpi=150, bbox_inches='tight')
+
 
 # Maybe double ML
 # make sure that finding is reliable, train and test
