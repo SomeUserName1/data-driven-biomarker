@@ -33,6 +33,7 @@ class FeatureAnalyzer(ABC):
 
         if model_type == ModelType.CLUSTER:
             # fit a classifier
+            # the cluster labels have to be predicteds here!
             clf = xgboost.XGBClassifier(use_label_encoder=False)
             clf.fit(self.df[predictors], self.df[predicteds])
             self.model = clf
@@ -84,14 +85,20 @@ class FeatureAnalyzer(ABC):
         print(rfecv.get_feature_names_out())
         print(rfecv.ranking_)
 
-    def shap_select(self, shap_max=False):
+    def shap_select(self, log=False, wfile=None, sep=None, shap_max=False):
         fn = self.get_max_importance if shap_max else self.get_mean_importance
         selector = SelectFromModel(self.model, prefit=True, threshold="median",
                                    max_features=int(0.9 * len(self.predictors)),
                                    importance_getter=fn)
         selector.fit(self.df[self.predictors])
-        print(selector.get_feature_names_out())
-        print(fn(None)[selector.get_support(indices=True)])
+
+        if not log:
+            print(selector.get_feature_names_out())
+            print(fn(None)[selector.get_support(indices=True)])
+        else:
+            wfile.write("====== " + sep + " =======")
+            wfile.write(str(selector.get_feature_names_out()))
+            wfile.write(str(selector.get_support(indices=True)))
 
     def correlation_matrix_plot(self, save=False, fig_path=None):
         plt.figure(figsize=(20,20))
@@ -103,6 +110,8 @@ class FeatureAnalyzer(ABC):
             plt.savefig(fig_path, dpi=150, bbox_inches='tight')
         else:
             plt.show()
+
+        plt.close('all')
 
 #    def shap_interaction_values(self):
 #        if self.model_type in [ModelType.TREE, ModelType.CLUSTER]:
@@ -121,11 +130,13 @@ class FeatureAnalyzer(ABC):
             shap.plots.partial_dependence(
                 col, self.predict_fn, self.X,
                 model_expected_value=True, feature_expected_value=True,
-                ice=False, matplotlib=True, show=False
+                ice=False, show=False
             )
             if fig_path is None:
                 fig_path = "shap_part_dependence.png"
             plt.savefig(fig_path, dpi=150, bbox_inches='tight')
+
+        plt.close('all')
 
 
     def scatter_plot(self, col, interaction=False, save=False, fig_path=None):
@@ -133,13 +144,15 @@ class FeatureAnalyzer(ABC):
         if not save:
             shap.plots.scatter(self.shap_values[:, col], color=self.shap_values)
         else:
-            shap.plots.scatter(self.shap_values[:, col], color=self.shap_values, matplotlib=True, show=False)
+            shap.plots.scatter(self.shap_values[:, col], color=self.shap_values, show=False)
             if fig_path is None:
                 fig_path = "shap_scatter.png"
             plt.savefig(fig_path, dpi=150, bbox_inches='tight')
 
+        plt.close('all')
 
-    def bar_plot(self, feature_correl=True, clustering_cutoff=0.8, save=False, fig_path=None):
+
+    def bar_plot(self, save=False, fig_path=None, clustering_cutoff=0.8):
         # Correlated features shown by dendrogram
         clustering = shap.utils.hclust(self.df[self.predictors],
                                        self.df[self.predicteds])
@@ -149,11 +162,12 @@ class FeatureAnalyzer(ABC):
                        clustering_cutoff=clustering_cutoff)
         else:
             shap.plots.bar(self.shap_values, max_display=self.max_display, clustering=clustering,
-                       clustering_cutoff=clustering_cutoff, matplotlib=True, show=False)
+                       clustering_cutoff=clustering_cutoff, show=False)
             if fig_path is None:
                 fig_path = "shap_bar.png"
             plt.savefig(fig_path, dpi=150, bbox_inches='tight')
 
+        plt.close('all')
         
 
     def waterfall_plot(self, index, save=False, fig_path=None):
@@ -162,43 +176,47 @@ class FeatureAnalyzer(ABC):
         if not save:
             shap.plots.waterfall(self.shap_values[index])
         else:
-            shap.plots.waterfall(self.shap_values[index], matplotlib=True, show=False)
+            shap.plots.waterfall(self.shap_values[index], show=False)
             if fig_path is None:
                 fig_path = "shap_waterfall.png"
             plt.savefig(fig_path, dpi=150, bbox_inches='tight')
 
+        plt.close('all')
 
     def beeswarm_plot(self, save=False, fig_path=None):
     # Beeswarm plot summarizes entire distribution of SHAP values f.a. features
         if not save:
             shap.plots.beeswarm(self.shap_values, max_display=self.max_display)
         else:
-            shap.plots.beeswarm(self.shap_values, max_display=self.max_display, matplotlib=True, show=False)
+            shap.plots.beeswarm(self.shap_values, max_display=self.max_display, show=False)
             if fig_path is None:
                 fig_path = "shap_beeswarm.png"
             plt.savefig(fig_path, dpi=150, bbox_inches='tight')
 
+        plt.close('all')
         
     def heatmap_plot(self, save=False, fig_path=None):
     # Heatmaps show value distribution vs. shap value per feature
         if not save:
             shap.plots.heatmap(self.shap_values, max_display=self.max_display)
         else:
-            shap.plots.heatmap(self.shap_values, max_display=self.max_display, matplotlib=True, show=False)
+            shap.plots.heatmap(self.shap_values, max_display=self.max_display, show=False)
             if fig_path is None:
                 fig_path = "shap_heatmap.png"
             plt.savefig(fig_path, dpi=150, bbox_inches='tight')
 
+        plt.close('all')
 
     def decision_plot(self, save=False, fig_path=None):
         if not save:
             shap.decision_plot(self.shap_values.base_values[0], self.shap_values.values)
         else:
-            shap.decision_plot(self.shap_values.base_values[0], self.shap_values.values, matplotlib=True, show=False)
+            shap.decision_plot(self.shap_values.base_values[0], self.shap_values.values, show=False)
             if fig_path is None:
                 fig_path = "shap_decision.png"
             plt.savefig(fig_path, dpi=150, bbox_inches='tight')
 
+        plt.close('all')
 
     def force_plot(self, idx, save=False, fig_path=None):
         expected = self.shap_values.base_values
@@ -210,6 +228,7 @@ class FeatureAnalyzer(ABC):
                 fig_path = "shap_force.png"
             plt.savefig(fig_path, dpi=150, bbox_inches='tight')
 
+        plt.close('all')
 
 # Maybe double ML
 # make sure that finding is reliable, train and test
