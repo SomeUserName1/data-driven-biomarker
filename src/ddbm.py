@@ -96,9 +96,9 @@ class FeatureAnalyzer(ABC):
             print(selector.get_feature_names_out())
             print(fn(None)[selector.get_support(indices=True)])
         else:
-            wfile.write("====== " + sep + " =======")
+            wfile.write(f"====== {sep} =======")
             wfile.write(str(selector.get_feature_names_out()))
-            wfile.write(str(selector.get_support(indices=True)))
+            wfile.write(str(fn(None)[selector.get_support(indices=True)]))
 
     def correlation_matrix_plot(self, save=False, fig_path=None):
         plt.figure(figsize=(20,20))
@@ -152,10 +152,13 @@ class FeatureAnalyzer(ABC):
         plt.close('all')
 
 
-    def bar_plot(self, save=False, fig_path=None, clustering_cutoff=0.8):
-        # Correlated features shown by dendrogram
-        clustering = shap.utils.hclust(self.df[self.predictors],
-                                       self.df[self.predicteds])
+    def bar_plot(self, save=False, fig_path=None, cluster: bool = False, clustering_cutoff=0.8):
+        if cluster:
+            # Correlated features shown by dendrogram
+            clustering = shap.utils.hclust(self.df[self.predictors],
+                                           self.df[self.predicteds])
+        else:
+            clustering = None
         # Mean shap value bar plot
         if not save:
             shap.plots.bar(self.shap_values, max_display=self.max_display, clustering=clustering,
@@ -168,7 +171,7 @@ class FeatureAnalyzer(ABC):
             plt.savefig(fig_path, dpi=150, bbox_inches='tight')
 
         plt.close('all')
-        
+
 
     def waterfall_plot(self, index, save=False, fig_path=None):
     # the waterfall_plot shows how we get from shap_values.base_values to
@@ -194,7 +197,7 @@ class FeatureAnalyzer(ABC):
             plt.savefig(fig_path, dpi=150, bbox_inches='tight')
 
         plt.close('all')
-        
+
     def heatmap_plot(self, save=False, fig_path=None):
     # Heatmaps show value distribution vs. shap value per feature
         if not save:
